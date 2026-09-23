@@ -66,11 +66,38 @@ window_monitor_name() {
   hyprctl monitors -j | jq -r --arg id "$mon_id" '.[] | select((.id|tostring)==$id) | .name'
 }
 
+# Any window opened while the dropdown is revealed and focused lands on
+# special:dropterm too -- that's normal Hyprland behavior for a focused
+# special workspace, and there is no reliable event hook to stop it (Hyprland
+# doesn't fire "window.open" for windows opened while a special workspace has
+# focus, so intercepting at creation time doesn't work; confirmed against
+# github.com/hyprwm/Hyprland/discussions/14862). So instead, sweep right
+# before hiding: anything sitting on special:dropterm that isn't the terminal
+# itself gets moved back to whatever normal workspace was active on that
+# monitor, so hiding the dropdown never takes another app down with it.
+sweep_stray_windows() {
+  local mon_name="$1"
+  [ -z "$mon_name" ] && return 0
+  local target_ws
+  target_ws=$(hyprctl monitors -j | jq -r --arg m "$mon_name" \
+    '.[] | select(.name==$m) | .activeWorkspace.name')
+  [ -z "$target_ws" ] || [ "$target_ws" = "null" ] && return 0
+  hyprctl clients -j | jq -r --arg ws "special:$WS" --arg c "$CLASS" \
+    '.[] | select(.workspace.name==$ws and .class!=$c) | .address' |
+  while read -r addr; do
+    [ -z "$addr" ] && continue
+    hyprctl dispatch "hl.dsp.window.move({window='address:$addr', workspace='$target_ws', follow=false})" >/dev/null 2>&1
+  done
+}
+
 toggle_ws_on_monitor() {
   local target
   target="$(window_monitor_name)"
   if [ -n "$target" ]; then
     hyprctl dispatch "hl.dsp.focus({monitor='$target'})" >/dev/null 2>&1
+    if is_revealed; then
+      sweep_stray_windows "$target"
+    fi
   fi
   hyprctl dispatch "hl.dsp.workspace.toggle_special('$WS')" >/dev/null 2>&1
 }
