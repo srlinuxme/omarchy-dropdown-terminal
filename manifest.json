@@ -1,0 +1,30 @@
+{
+  "$schema": "https://raw.githubusercontent.com/omarchy/omarchy/main/schemas/plugin.json",
+  "schemaVersion": 1,
+  "id": "srlinux.dropterm",
+  "name": "Dropdown terminal",
+  "version": "1.0.0",
+  "author": "Leandro Barbosa (srlinux)",
+  "authorUrl": "https://srlinux.me",
+  "license": "MIT",
+  "homepage": "https://github.com/srlinuxme/omarchy-dropdown-terminal",
+  "repository": "https://github.com/srlinuxme/omarchy-dropdown-terminal",
+  "description": "Guake/Quake-style dropdown terminal docked to the top bar: SUPER+GRAVE toggles a persistent tmux-backed terminal with tabs, that hides/shows without ever losing shell state.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Dropdown terminal",
+    "description": "Shows and toggles the SUPER+GRAVE tmux-backed dropdown terminal.",
+    "category": "Compositor",
+    "aliases": [
+      "dropdown",
+      "quake-terminal",
+      "terminal-dropdown"
+    ],
+    "allowMultiple": false
+  }
+}

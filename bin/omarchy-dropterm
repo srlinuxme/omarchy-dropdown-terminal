@@ -1,0 +1,109 @@
+#!/bin/bash
+# omarchy-dropterm -- toggle a persistent, tmux-backed dropdown terminal on
+# a named Hyprland special workspace ("special:dropterm"). The terminal's
+# shell state (running commands, scrollback, cwd) survives being hidden, the
+# window being closed, or even the terminal app crashing, because it lives
+# inside a detached tmux session ("dropterm") that keeps running
+# independently of the window.
+#
+# Tabs: each tmux "window" inside this session is a tab, with its own
+# independent shell (own cwd, scrollback, running programs), switchable with
+# Alt+T (new tab), Alt+W (close tab), Alt+Left/Right or Alt+1-9 (switch) --
+# no tmux prefix key needed. Defined in dropterm.tmux.conf (shipped next to
+# this script, in the plugin's own directory), loaded only for this
+# dedicated session so the user's own tmux config is untouched.
+#
+# The window rule installed by install.sh sends any DropTerm-classed window
+# straight to "special:dropterm" (silently) as soon as it maps, so this
+# script only needs to spawn it once and otherwise just toggle visibility.
+#
+# Usage: omarchy-dropterm [toggle|open|close]
+#   toggle (default) - show if hidden, hide if shown, spawn if not running
+#   open             - show it (spawn first if needed), no-op if already shown
+#   close            - hide it if shown, no-op if hidden or not running
+
+set -euo pipefail
+
+CLASS="DropTerm"
+WS="dropterm"
+PLUGIN_DIR="$(cd -- "${BASH_SOURCE[0]%/*}/.." && pwd -P)"
+TMUX_CONF="$PLUGIN_DIR/scripts/dropterm.tmux.conf"
+ACTION="${1:-toggle}"
+
+has_window() {
+  hyprctl clients -j | jq -e --arg c "$CLASS" '[.[] | select(.class==$c)] | length > 0' >/dev/null 2>&1
+}
+
+# True once the window exists AND has actually landed on the special
+# workspace. The window rule that routes it there applies asynchronously
+# after the window maps, so waiting on has_window() alone races it: toggling
+# visibility before the move lands leaves the window sitting on a normal
+# workspace instead of the hidden special one.
+on_special_ws() {
+  hyprctl clients -j | jq -e --arg c "$CLASS" --arg ws "special:$WS" \
+    '[.[] | select(.class==$c and .workspace.name==$ws)] | length > 0' >/dev/null 2>&1
+}
+
+is_revealed() {
+  hyprctl monitors -j | jq -e --arg ws "special:$WS" \
+    '[.[] | select(.specialWorkspace.name==$ws)] | length > 0' >/dev/null 2>&1
+}
+
+# Which output the DropTerm window itself currently lives on (by monitor
+# name, not numeric id, since ids can be unstable across hotplugs). Used to
+# pin focus there before toggling: in multi-monitor setups,
+# togglespecialworkspace only reliably hides/shows a special workspace when
+# the currently focused monitor matches the one it's on/was shown on.
+window_monitor_name() {
+  local mon_id
+  mon_id=$(hyprctl clients -j | jq -r --arg c "$CLASS" '[.[] | select(.class==$c)][0].monitor // empty')
+  [ -z "$mon_id" ] && return 0
+  hyprctl monitors -j | jq -r --arg id "$mon_id" '.[] | select((.id|tostring)==$id) | .name'
+}
+
+toggle_ws_on_monitor() {
+  local target
+  target="$(window_monitor_name)"
+  if [ -n "$target" ]; then
+    hyprctl dispatch "hl.dsp.focus({monitor='$target'})" >/dev/null 2>&1
+  fi
+  hyprctl dispatch "hl.dsp.workspace.toggle_special('$WS')" >/dev/null 2>&1
+}
+
+spawn_and_reveal() {
+  local cmd="alacritty --class $CLASS -e bash -c 'tmux attach -t $WS || tmux -f $TMUX_CONF new -s $WS'"
+  hyprctl dispatch "hl.dsp.exec_cmd(\"$cmd\")" >/dev/null 2>&1
+
+  local i
+  for i in $(seq 1 60); do
+    on_special_ws && break
+    sleep 0.05
+  done
+  toggle_ws_on_monitor
+}
+
+case "$ACTION" in
+  toggle)
+    if has_window; then
+      toggle_ws_on_monitor
+    else
+      spawn_and_reveal
+    fi
+    ;;
+  open)
+    if ! has_window; then
+      spawn_and_reveal
+    elif ! is_revealed; then
+      toggle_ws_on_monitor
+    fi
+    ;;
+  close)
+    if has_window && is_revealed; then
+      toggle_ws_on_monitor
+    fi
+    ;;
+  *)
+    echo "usage: omarchy-dropterm [toggle|open|close]" >&2
+    exit 1
+    ;;
+esac
