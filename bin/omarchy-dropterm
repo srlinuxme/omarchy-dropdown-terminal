@@ -26,7 +26,12 @@ set -euo pipefail
 
 CLASS="DropTerm"
 WS="dropterm"
-PLUGIN_DIR="$(cd -- "${BASH_SOURCE[0]%/*}/.." && pwd -P)"
+# Resolve through the ~/.local/bin symlink to the plugin's real directory:
+# BASH_SOURCE[0] reflects the invocation path (the symlink itself, e.g.
+# ~/.local/bin/omarchy-dropterm), not its target, so a plain dirname would
+# land in ~/.local/scripts/ instead of the plugin's own scripts/ dir.
+# readlink -f follows the symlink chain to the actual file first.
+PLUGIN_DIR="$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd -P)"
 TMUX_CONF="$PLUGIN_DIR/scripts/dropterm.tmux.conf"
 ACTION="${1:-toggle}"
 

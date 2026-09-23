@@ -85,26 +85,18 @@ do_install() {
   window_block=$(cat <<LUA
 $WINDOW_MARK_BEGIN
 -- Dropdown terminal: float, sized ~80% width / 45% height, docked flush
--- against the top bar (y=0 in monitor-local coords, which already excludes
--- the bar's reserved area), slightly transparent -- classic Guake/Quake
--- look. It always opens onto its own hidden special workspace so the CLI
--- never has to race the window's mapping.
---
--- NOTE: deliberately no \`pin = true\`. Pinning keeps a window visible on
--- every workspace regardless of switches -- which defeats hiding it via the
--- special workspace entirely (toggling would dim/undim the desktop, but the
--- pinned window itself would never disappear).
---
--- \`tag = "+terminal"\` opts this window into Omarchy's terminal tag (see
--- default/hypr/apps/terminals.lua), which only auto-tags a fixed list of
--- terminal classes/app-ids. Since DropTerm is a custom class (needed for the
--- rules above), it wouldn't otherwise get that tag -- and SUPER+V/C/X
--- (default/hypr/bindings/clipboard.lua) use it to send Shift+Insert instead
--- of Ctrl+V/C/X to terminal windows.
+-- against the top bar. move.y is a literal pixel offset (not a fraction of
+-- monitor_h): Hyprland's move/size expressions are relative to the full
+-- monitor rectangle, NOT the usable area below reserved zones (unlike
+-- window_rule's "onscreen"/auto-center path) -- y=0 sits BEHIND the bar and
+-- clips the terminal's first line. 26 is Omarchy's default top-bar height
+-- in logical pixels (matches \`hyprctl monitors -j\` .reserved[0] on every
+-- monitor regardless of its scale factor -- confirmed on both a 1.0 and a
+-- 1.25 scale output here). If you've changed your bar height, adjust this.
 o.window("DropTerm", {
   float = true,
   size = { "(monitor_w*0.8)", "(monitor_h*0.45)" },
-  move = { "(monitor_w*0.1)", "0" },
+  move = { "(monitor_w*0.1)", "26" },
   opacity = "0.95 0.95",
   tag = "+terminal",
   workspace = "special:dropterm silent",
